@@ -1,0 +1,17 @@
+{
+    "FFTEnabled"                :  false,
+
+    "TimeDomainScopeEnabled"    :  true,
+
+    "UseSpeakerOrMic"           :  "Speaker",
+
+    "AmbientNoiseForMicInDB"    :  0.05,
+
+    "InputBlockTimeInSeconds"   :  0.05,
+
+    "TimeDomainScopeSettings"   :
+        {
+            "yMinLimit"         : -5000,
+            "yMaxLimit"         : 5000
+        }
+}
