@@ -4,153 +4,150 @@ from utilityFunctions import LoadConfig
 import sys
 import os
 import numpy as np
-import matplotlib.pyplot as plt
+import pyqtgraph as pg
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QMainWindow
+from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 
-if os.name == 'nt': # Only if we are running on Windows
+if os.name == 'nt':  # Only if we are running on Windows
     from ctypes import windll
     k = windll.kernel32
     k.SetConsoleMode(k.GetStdHandle(-11), 7)
 
-def main(p_sConfigDictPath):
-    dtConfig = LoadConfig(p_sConfigDictPath)
-    # if dtConfig == {}
+class SoundCapturer(QThread):
+    sigBlockCaptured = pyqtSignal(bool)
 
-    if(dtConfig["TimeDomainScopeEnabled"]):
+    def __init__(self, p_dtConfigDict):
+        super(SoundCapturer, self).__init__()
+        self.dtConfig = p_dtConfigDict
 
-        plt.ion() # Stop matplotlib windows from blocking
+        self.leftArrayData  = []
+        self.rightArrayData = []
 
-        # Setup figure, axis and initiate plot
-        with plt.rc_context({'axes.edgecolor':'white', 'xtick.color':'dbffff', 'ytick.color':'dbffff', 'figure.facecolor':'#252526', 'axes.labelcolor':'white', 'figure.figsize':[16, 7]}):
-            # Temporary rc parameters in effect
-            scopeFig, (scopeAx1, scopeAx2) = plt.subplots(1, 2)
-        
-        # xdata, ydata = [], []
-        scopeAx1Ln, = scopeAx1.plot([], [], '-', color="#00dbdb")
-        scopeAx1.set_ylim(bottom=dtConfig["TimeDomainScopeSettings"]["yMinLimit"], top=dtConfig["TimeDomainScopeSettings"]["yMaxLimit"])
-        scopeAx1.grid(linestyle="--")
-        
-        scopeAx1.set_facecolor("#252526")
+        with pyaudio.PyAudio() as p:
+            try:
+                # Get default WASAPI info
+                wasapi_info = p.get_host_api_info_by_type(pyaudio.paWASAPI)
+            except OSError:
+                print("WASAPI is not available on the system. Exiting...")
+                exit()
 
-        scopeAx1.set_xlabel("Time [ms]")
-        scopeAx1.set_ylabel("Level [Bits]")
-        scopeAx1.set_title("Left", color="white")
+            if self.dtConfig["UseSpeakerOrMic"] == "Speaker":
+                default_speakers = p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+                
+                if not default_speakers["isLoopbackDevice"]:
+                    for loopback in p.get_loopback_device_info_generator():
+                        if default_speakers["name"] in loopback["name"]:
+                            default_speakers = loopback
+                            break
+                    else:
+                        print("Default loopback output device not found. Exiting...")
+                        exit()
 
-        scopeAx2Ln, = scopeAx2.plot([], [], '-', color="#00dbdb")
-        scopeAx2.set_ylim(bottom=dtConfig["TimeDomainScopeSettings"]["yMinLimit"], top=dtConfig["TimeDomainScopeSettings"]["yMaxLimit"])
-        scopeAx2.grid(linestyle="--")
-        
-        scopeAx2.set_facecolor("#252526")
+                self.NumberofChannels = default_speakers["maxInputChannels"]
+                self.iRate = int(default_speakers["defaultSampleRate"])
+                self.iInputFramesPerBlock = int(self.iRate * self.dtConfig["InputBlockTimeInSeconds"])
+                self.iInputDeviceIndex = default_speakers["index"]
 
-        scopeAx2.set_xlabel("Time [ms]")
-        # scopeAx2.set_ylabel("Level [Bits]")
-        scopeAx2.set_title("Right", color="white")
+            elif self.dtConfig["UseSpeakerOrMic"] == "Mic":
+                default_microphones = p.get_device_info_by_index(wasapi_info["defaultInputDevice"])
 
-    with pyaudio.PyAudio() as p:
-        try:
-            # Get default WASAPI info
-            wasapi_info = p.get_host_api_info_by_type(pyaudio.paWASAPI)
-        except OSError:
-            print("Looks like WASAPI is not available on the system. Exiting...")
-            exit()
-    
-        if dtConfig["UseSpeakerOrMic"] == "Speaker":
-            # Get default WASAPI speakers
-            default_speakers = p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
-            
-            if not default_speakers["isLoopbackDevice"]:
-                for loopback in p.get_loopback_device_info_generator():
-                    """
-                    Try to find loopback device with same name(and [Loopback suffix]).
-                    Unfortunately, this is the most adequate way at the moment.
-                    """
-                    if default_speakers["name"] in loopback["name"]:
-                        default_speakers = loopback
-                        break
-                else:
-                    print("Default loopback output device not found.\n\nRun `python -m pyaudiowpatch` to check available devices.\nExiting...\n")
-                    exit()
+                self.NumberofChannels = default_microphones["maxInputChannels"]
+                self.iRate = int(default_microphones["defaultSampleRate"])
+                self.iInputFramesPerBlock = int(self.iRate * self.dtConfig["InputBlockTimeInSeconds"])
+                self.iInputDeviceIndex = default_microphones["index"]
 
-            NumberofChannels        = default_speakers["maxInputChannels"]
-            iRate                   = int(default_speakers["defaultSampleRate"])
-            iInputFramesPerBlock    = int(iRate * dtConfig["InputBlockTimeInSeconds"])
-            iInputDeviceIndex       = default_speakers["index"]
+                print(self.iRate)
 
-        elif dtConfig["UseSpeakerOrMic"] == "Mic":
-            # Get default WASAPI microphones
-            default_microphones = p.get_device_info_by_index(wasapi_info["defaultInputDevice"])
+            else:
+                raise Exception("Invalid <UseSpeakerOrMic> param. Use 'Speaker' or 'Mic'")
 
-            NumberofChannels        = default_microphones["maxInputChannels"]
-            iRate                   = int(default_microphones["defaultSampleRate"])
-            iInputFramesPerBlock    = int(iRate * dtConfig["InputBlockTimeInSeconds"])
-            iInputDeviceIndex       = default_microphones["index"]
+    def run(self):
+        with pyaudio.PyAudio() as p:
+            with p.open(format=pyaudio.paInt16,
+                        channels=self.NumberofChannels,
+                        rate=self.iRate,
+                        input=True,
+                        frames_per_buffer=self.iInputFramesPerBlock,
+                        input_device_index=self.iInputDeviceIndex
+                        ) as stream:
+
+                while True:
+                    data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
+                    if self.dtConfig["TimeDomainScopeEnabled"]:
+                        arrayData = np.frombuffer(data, dtype=np.int16)
+                        self.leftArrayData = arrayData[0::2]
+                        self.rightArrayData = arrayData[1::2]
+                        self.sigBlockCaptured.emit(True)
+
+class Scope(QMainWindow):
+    def __init__(self, soundCapturer):
+        super(Scope, self).__init__()
+
+        self.soundCapturer = soundCapturer
+        self.dtConfig = self.soundCapturer.dtConfig
+
+        # Setup pyqtgraph plot
+        self.plotWidget = pg.PlotWidget(title="Real-time Audio Waveform")
+        self.setCentralWidget(self.plotWidget)
+        self.plotWidget.setYRange(self.dtConfig["TimeDomainScopeSettings"]["yMinLimit"], self.dtConfig["TimeDomainScopeSettings"]["yMaxLimit"])  # Set Y range for int16 audio data
+        self.leftChannelCurve = self.plotWidget.plot(pen='r')  # Left channel in red
+        self.rightChannelCurve = self.plotWidget.plot(pen='g')  # Right channel in green
+        self.plotWidget.showGrid(x=True, y=True)  # Enable grid
+
+        # Add legend
+        self.plotWidget.addLegend()
+
+        # Left and right channel curves with labels for the legend
+        self.leftChannelCurve = self.plotWidget.plot(pen='r', name="Left Channel")  # Left channel in red
+        self.rightChannelCurve = self.plotWidget.plot(pen='g', name="Right Channel")  # Right channel in green
+
+        # Set axis labels
+        self.plotWidget.setLabel('bottom', 'Time', units='s')  # X-axis for time in seconds
+        self.plotWidget.setLabel('left', 'Sound Level [Bits]')  # Y-axis for sound level in bits
+
+        # Calculate time axis based on InputBlockTimeInSeconds and sampling rate
+        block_duration = self.dtConfig["InputBlockTimeInSeconds"]
+        self.timeAxis = np.linspace(0, block_duration, self.soundCapturer.iInputFramesPerBlock)
+
+        # Connect signal for real-time plotting
+        self.soundCapturer.sigBlockCaptured.connect(self.update_plot)
+
+    @pyqtSlot(bool)
+    def update_plot(self, _):
+        # Update left and right channel data with time as x-axis
+        self.leftChannelCurve.setData(self.timeAxis, self.soundCapturer.leftArrayData)
+        self.rightChannelCurve.setData(self.timeAxis, self.soundCapturer.rightArrayData)
+
+
+class myWindow(QMainWindow):
+    sigDraw = pyqtSignal(bool)
+
+    def __init__(self, p_sConfigDictPath):
+        super(myWindow, self).__init__()
+        self.sConfigPath = p_sConfigDictPath
+        self.dtConfig = LoadConfig(self.sConfigPath)
+        self.SoundCapturer = SoundCapturer(self.dtConfig)
+
+        if self.dtConfig["TimeDomainScopeEnabled"]:
+            # Setup Scope for real-time plotting
+            self.scope = Scope(self.SoundCapturer)
+            self.scope.show()
         else:
-            raise Exception("Invalid <UseSpeakerOrMic> param. Use 'Speaker' or 'Mic'")
+            print("-> Time domain scope disabled in [swi_config.json]")
 
-        with p.open(format=pyaudio.paInt16,
-                    channels=NumberofChannels,
-                    rate=iRate,
-                    input=True,
-                    frames_per_buffer=iInputFramesPerBlock,
-                    input_device_index=iInputDeviceIndex
-                    ) as stream:
+        self.SoundCapturer.start()
 
-            if(dtConfig["TimeDomainScopeEnabled"]):
-                totalNumberOfSamples = stream._frames_per_buffer
-
-                tickSizeInSec = dtConfig["InputBlockTimeInSeconds"] / totalNumberOfSamples
-                timeArrayInMilliSec = np.arange(0, totalNumberOfSamples, 1) * tickSizeInSec * 1000
-
-                scopeAx1Ln.set_xdata(timeArrayInMilliSec)
-                scopeAx1.set_xlim(timeArrayInMilliSec[0] - tickSizeInSec*1000, timeArrayInMilliSec[-1] + tickSizeInSec*1000)
-
-                scopeAx2Ln.set_xdata(timeArrayInMilliSec)
-                scopeAx2.set_xlim(timeArrayInMilliSec[0] - tickSizeInSec*1000, timeArrayInMilliSec[-1] + tickSizeInSec*1000)
-
-
-            while True:
-                data = stream.read(iInputFramesPerBlock, exception_on_overflow=False)
-                if(dtConfig["TimeDomainScopeEnabled"]):
-
-                    # sampleRate = float(iRate)
-                    # print(len(arrayData))
-                    arrayData = np.frombuffer(data, dtype=np.int16) #np.int16
-
-                    leftArrayData = arrayData[0::2]
-                    rightArrayData = arrayData[1::2]
-
-                    scopeAx1Ln.set_ydata(leftArrayData)
-                    scopeAx2Ln.set_ydata(rightArrayData)
-
-                    scopeFig.canvas.draw()
-                    scopeFig.canvas.flush_events()
-
-                    # # arrayData = arrayData[0:len(arrayData)//2]
-                    # fftData   = np.fft.fft(arrayData)
-                    # lenFftData = len(fftData)
-                    # samplingPeriod = lenFftData / sampleRate
-                    # freqArray  = np.arange(lenFftData) / samplingPeriod
-
-                    # Reset the data in the plot
-                    # ln.set_xdata(freqArray)
-                    # ln.set_ydata(abs(fftData))
-
-                    
-                    # print(dtConfig["InputBlockTimeInSeconds"] / totalNumberOfSamples)
-                    # print(len(timeArrayInMilliSec))
-                    # print(len(leftArrayData))
-
-
-
-                    # Rescale the axis so that the data can be seen in the plot
-                    # if you know the bounds of your data you could just set this once
-                    # so that the axis don't keep changing
-                    # scopeAx1.relim()
-                    # ax.autoscale_view()
-
-                    # Update the window
-
-
+def app(p_sConfigDictPath):
+    app = QtWidgets.QApplication(sys.argv)
+    app.setStyle('Fusion')
+    try:
+        win = myWindow(p_sConfigDictPath)
+        win.show()
+        sys.exit(app.exec_())
+    except Exception as err:
+        print(f"Error occurred: {err}")
 
 if __name__ == "__main__":
     sConfigDictPath = sys.argv[1]
-    main(sConfigDictPath)
+    app(sConfigDictPath)

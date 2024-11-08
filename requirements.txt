@@ -1,3 +1,4 @@
 PyAudioWPatch
 numpy
-matplotlib
+PyQt5
+pyqtgraph
