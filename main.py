@@ -16,6 +16,7 @@ if os.name == 'nt':  # Only if we are running on Windows
 
 class SoundCapturer(QThread):
     sigBlockCaptured = pyqtSignal(bool)
+    sigFFTDataReady  = pyqtSignal(np.ndarray, np.ndarray)  # Signal for FFT data
 
     def __init__(self, p_dtConfigDict):
         super(SoundCapturer, self).__init__()
@@ -74,11 +75,59 @@ class SoundCapturer(QThread):
 
                 while True:
                     data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
+                    arrayData = np.frombuffer(data, dtype=np.int16)
+                    self.leftArrayData = arrayData[0::2]
+                    self.rightArrayData = arrayData[1::2]
+
                     if self.dtConfig["TimeDomainScopeEnabled"]:
-                        arrayData = np.frombuffer(data, dtype=np.int16)
-                        self.leftArrayData = arrayData[0::2]
-                        self.rightArrayData = arrayData[1::2]
+                        # Emit signal for time domain plot
                         self.sigBlockCaptured.emit(True)
+
+                    if self.dtConfig["FrequencyDomainScopeEnabled"]:
+                        # Calculate FFT and emit signal
+                        self.perform_fft(self.leftArrayData)  # Send left channel data for FFT
+
+    def perform_fft(self, data):
+        N = len(data)
+        fft_data = np.fft.fft(data)
+        fft_data = np.abs(fft_data[:N // 2])
+
+        # Normalize FFT magnitude by dividing by N
+        fft_data = np.abs(fft_data[:N // 2]) * (2.0 / N)
+
+        frequencies = np.fft.fftfreq(N, 1 / self.iRate)[:N // 2]
+        self.sigFFTDataReady.emit(frequencies, fft_data)
+
+class FFTScope(QMainWindow):
+    def __init__(self, soundCapturer):
+        super(FFTScope, self).__init__()
+        self.soundCapturer = soundCapturer
+        self.dtConfig = self.soundCapturer.dtConfig
+
+        # Set up pyqtgraph FFT plot
+        self.plotWidget = pg.PlotWidget(title="Real-time FFT Scope")
+        self.setCentralWidget(self.plotWidget)
+
+        self.fftCurve = self.plotWidget.plot(pen='b')
+        self.plotWidget.showGrid(x=True, y=True)  # Enable grid
+
+        self.plotWidget.setLogMode(x=True, y=False)  # Log scale on Y-axis
+        self.plotWidget.setYRange(self.dtConfig["FrequencyDomainScopeSettings"]["yMinLimit"], self.dtConfig["FrequencyDomainScopeSettings"]["yMaxLimit"])
+        self.plotWidget.setLabel('bottom', 'Frequency', units='Hz')
+        self.plotWidget.setLabel('left', 'Magnitude')
+
+
+        # Connect signal for real-time FFT plotting
+        self.soundCapturer.sigFFTDataReady.connect(self.update_fft_plot)
+
+    @pyqtSlot(np.ndarray, np.ndarray)
+    def update_fft_plot(self, frequencies, fft_data):
+        # Convert FFT data to dB
+        # epsilon = 1e-10  # Small constant to avoid log(0)
+        # fft_data_db = 20 * np.log10(fft_data + epsilon)
+
+        # Update FFT plot
+        self.fftCurve.setData(frequencies, fft_data)
 
 class Scope(QMainWindow):
     def __init__(self, soundCapturer):
@@ -135,6 +184,13 @@ class myWindow(QMainWindow):
             self.scope.show()
         else:
             print("-> Time domain scope disabled in [swi_config.json]")
+
+        if self.dtConfig["FrequencyDomainScopeEnabled"]:
+            # Setup FFTScope for real-time FFT plotting
+            self.fftScope = FFTScope(self.SoundCapturer)
+            self.fftScope.show()
+        else:
+            print("-> Frequency domain scope disabled in [swi_config.json]")
 
         self.SoundCapturer.start()
 

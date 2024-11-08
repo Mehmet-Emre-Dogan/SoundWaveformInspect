@@ -1,17 +1,23 @@
 {
-    "FFTEnabled"                :  false,
+    "FrequencyDomainScopeEnabled"   :  true,
 
-    "TimeDomainScopeEnabled"    :  true,
+    "TimeDomainScopeEnabled"        :  true,
 
-    "UseSpeakerOrMic"           :  "Speaker",
+    "UseSpeakerOrMic"               :  "Speaker",
 
-    "AmbientNoiseForMicInDB"    :  0.05,
+    "AmbientNoiseForMicInDB"        :  0.05,
 
-    "InputBlockTimeInSeconds"   :  100e-3,
+    "InputBlockTimeInSeconds"       :  60e-3,
 
-    "TimeDomainScopeSettings"   :
+    "FrequencyDomainScopeSettings"  :
         {
-            "yMinLimit"         : -5000,
-            "yMaxLimit"         : 5000
+            "yMinLimit"             : -100,
+            "yMaxLimit"             : 1e3
+        },
+
+    "TimeDomainScopeSettings"       :
+        {
+            "yMinLimit"             : -5000,
+            "yMaxLimit"             : 5000
         }
 }
