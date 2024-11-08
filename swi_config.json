@@ -17,7 +17,7 @@
 
     "TimeDomainScopeSettings"       :
         {
-            "yMinLimit"             : -5000,
-            "yMaxLimit"             : 5000
+            "yMinLimit"             : -2e3,
+            "yMaxLimit"             : 2e3
         }
 }

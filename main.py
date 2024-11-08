@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 import pyaudiowpatch as pyaudio
 from utilityFunctions import LoadConfig
+from constants import *
+from guiFiles.mainGui import Ui_MainWindow as mainMainWindow
 import sys
 import os
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 
@@ -101,33 +103,45 @@ class SoundCapturer(QThread):
 class FFTScope(QMainWindow):
     def __init__(self, soundCapturer):
         super(FFTScope, self).__init__()
+
         self.soundCapturer = soundCapturer
         self.dtConfig = self.soundCapturer.dtConfig
+
+        self.setWindowTitle("Frequency Domain")
+        self.setWindowIcon(QtGui.QIcon('freq.png'))
 
         # Set up pyqtgraph FFT plot
         self.plotWidget = pg.PlotWidget(title="Real-time FFT Scope")
         self.setCentralWidget(self.plotWidget)
 
         self.fftCurve = self.plotWidget.plot(pen='b')
+        self.maxPeakCurve = self.plotWidget.plot(pen='orange', style='--')  # Orange dashed line for max peaks
         self.plotWidget.showGrid(x=True, y=True)  # Enable grid
 
-        self.plotWidget.setLogMode(x=True, y=False)  # Log scale on Y-axis
+        self.plotWidget.addLegend() # Add legend
+        self.fftCurve = self.plotWidget.plot(pen='b', name="Current FFT Data")
+        self.maxPeakCurve = self.plotWidget.plot(pen='orange', name="Max Peak FFT Data", style='--')  # Orange dashed line for max peaks
+
+        self.plotWidget.setLogMode(x=True, y=False)  # Log scale on X-axis (frequency)
         self.plotWidget.setYRange(self.dtConfig["FrequencyDomainScopeSettings"]["yMinLimit"], self.dtConfig["FrequencyDomainScopeSettings"]["yMaxLimit"])
         self.plotWidget.setLabel('bottom', 'Frequency', units='Hz')
         self.plotWidget.setLabel('left', 'Magnitude')
 
+        # Initialize a max peaks array with very low values to start with
+        self.maxPeaks = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
 
         # Connect signal for real-time FFT plotting
         self.soundCapturer.sigFFTDataReady.connect(self.update_fft_plot)
 
     @pyqtSlot(np.ndarray, np.ndarray)
     def update_fft_plot(self, frequencies, fft_data):
-        # Convert FFT data to dB
-        # epsilon = 1e-10  # Small constant to avoid log(0)
-        # fft_data_db = 20 * np.log10(fft_data + epsilon)
+        # Update the max peak values by comparing current FFT data with previously held max
+        self.maxPeaks = np.maximum(self.maxPeaks, fft_data)
 
-        # Update FFT plot
+        # Update FFT plot with live data
         self.fftCurve.setData(frequencies, fft_data)
+        # Update max peak plot with held peak values
+        self.maxPeakCurve.setData(frequencies, self.maxPeaks)
 
 class Scope(QMainWindow):
     def __init__(self, soundCapturer):
@@ -135,6 +149,9 @@ class Scope(QMainWindow):
 
         self.soundCapturer = soundCapturer
         self.dtConfig = self.soundCapturer.dtConfig
+
+        self.setWindowTitle("Time Domain")
+        self.setWindowIcon(QtGui.QIcon('time.png'))
 
         # Setup pyqtgraph plot
         self.plotWidget = pg.PlotWidget(title="Real-time Audio Waveform")
@@ -170,12 +187,19 @@ class Scope(QMainWindow):
 
 
 class myWindow(QMainWindow):
-    sigDraw = pyqtSignal(bool)
-
     def __init__(self, p_sConfigDictPath):
         super(myWindow, self).__init__()
+        self.ui = mainMainWindow()
+        self.ui.setupUi(self)
+        self.setWindowIcon(QtGui.QIcon('img.png'))
+
+        self.ui.btnResetFFTMaxHold.clicked.connect(self.clear_max_hold)
+
+        self.runPauseState = "run"
+
         self.sConfigPath = p_sConfigDictPath
         self.dtConfig = LoadConfig(self.sConfigPath)
+
         self.SoundCapturer = SoundCapturer(self.dtConfig)
 
         if self.dtConfig["TimeDomainScopeEnabled"]:
@@ -189,10 +213,29 @@ class myWindow(QMainWindow):
             # Setup FFTScope for real-time FFT plotting
             self.fftScope = FFTScope(self.SoundCapturer)
             self.fftScope.show()
+
+            self.ui.btnResetFFTMaxHold.setEnabled(True)
+  
         else:
             print("-> Frequency domain scope disabled in [swi_config.json]")
 
         self.SoundCapturer.start()
+
+    def clear_max_hold(self):
+        # Reset the max peak hold in the FFTScope
+        if self.fftScope:
+            self.fftScope.maxPeaks = np.zeros_like(self.fftScope.maxPeaks)  # Reset the max peaks array
+            self.fftScope.maxPeakCurve.setData([], [])  # Clear the max peak curve
+    # TODO
+    # def HandleBtnPauseContinue(self):
+    #     if(self.runPauseState == "run"):
+    #         self.ui.btnPauseContinue.setText("Pause")
+    #     elif(self.runPauseState == "paused"):
+    #         self.ui.btnPauseContinue.setText("Continue")
+    #     else:
+    #         self.ui.btnPauseContinue.setText("State Error")
+
+
 
 def app(p_sConfigDictPath):
     app = QtWidgets.QApplication(sys.argv)
