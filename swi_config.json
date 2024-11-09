@@ -18,6 +18,13 @@
     "TimeDomainScopeSettings"       :
         {
             "yMinLimit"             : -5e3,
-            "yMaxLimit"             : 5e3
+            "yMaxLimit"             : 5e3,
+            "persistOnTop"          : true
+        },
+
+    "ControlWindowSettings"         :
+        {
+
+            "persistOnTop"          : true
         }
 }

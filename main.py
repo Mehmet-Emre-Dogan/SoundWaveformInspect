@@ -7,8 +7,8 @@ import sys
 import os
 import numpy as np
 import pyqtgraph as pg
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtWidgets import QMainWindow
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtWidgets import QMainWindow, QApplication
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 import time
 
@@ -131,13 +131,82 @@ class FFTScope(QMainWindow):
         self.plotWidget.setLogMode(x=True, y=False)  # Log scale on X-axis (frequency)
         self.plotWidget.setYRange(self.dtConfig["FrequencyDomainScopeSettings"]["yMinLimit"], self.dtConfig["FrequencyDomainScopeSettings"]["yMaxLimit"])
         self.plotWidget.setLabel('bottom', 'Frequency', units='Hz')
-        self.plotWidget.setLabel('left', 'Magnitude')
+        self.plotWidget.setLabel('left', 'Magnitude [Bits]')
 
         # Initialize a max peaks array with very low values to start with
         self.maxPeaks = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
 
+        # Add scatter plot for marking clicked points
+        self.markerPlot = pg.ScatterPlotItem(size=10, pen='w')  # Red markers with white outline
+        self.plotWidget.addItem(self.markerPlot)
+
+        # Enable mouse tracking for tooltip
+        self.plotWidget.setMouseTracking(True)
+        self.plotWidget.scene().sigMouseMoved.connect(self.show_tooltip)
+        self.plotWidget.scene().sigMouseClicked.connect(self.mark_point)
+        # Initialize a variable to store the persistent tooltip label
+        self.persistentAnnotation = None
+
         # Connect signal for real-time FFT plotting
         self.soundCapturer.sigFFTDataReady.connect(self.update_fft_plot)
+
+    def show_tooltip(self, pos):
+        # Map the mouse position to plot coordinates
+        mouse_point = self.plotWidget.plotItem.vb.mapSceneToView(pos)
+        x = mouse_point.x()
+        y = mouse_point.y()
+
+        # Check if the plot is in log scale for x or y
+        blXIsLog = self.plotWidget.getAxis('bottom').logMode
+        blYIsLog = self.plotWidget.getAxis('left').logMode
+
+        xValue = 10 ** x if blXIsLog else x
+        yValue = 10 ** y if blYIsLog else y
+
+        # Retrieve x and y axis bounds
+        x_min, x_max = self.plotWidget.plotItem.vb.viewRange()[0]
+        y_min, y_max = self.plotWidget.plotItem.vb.viewRange()[1]
+
+        # Ensure coordinates are within range
+        if x_min <= x <= x_max and y_min <= y <= y_max:
+            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), f"Frequency: {xValue:.2f} Hz\nMagnitude: {yValue:.2f} Bits")
+        else:
+            # Hide tooltip if mouse is out of plot range
+            QtWidgets.QToolTip.hideText()
+
+    def mark_point(self, event):
+        """Mark the clicked point and display a persistent tooltip."""
+        # Map the clicked position to plot coordinates
+        pos = event.scenePos()
+        mouse_point = self.plotWidget.plotItem.vb.mapSceneToView(pos)
+        x, y = mouse_point.x(), mouse_point.y()
+
+        # Retrieve plot bounds
+        x_min, x_max = self.plotWidget.plotItem.vb.viewRange()[0]
+        y_min, y_max = self.plotWidget.plotItem.vb.viewRange()[1]
+
+        # Ensure click is within bounds
+        if x_min <= x <= x_max and y_min <= y <= y_max:
+            # Adjust for log scale if applicable
+            x_value = 10 ** x if self.plotWidget.getAxis('bottom').logMode else x
+            y_value = 10 ** y if self.plotWidget.getAxis('left').logMode else y
+
+            # Set the marker on the clicked point
+            self.markerPlot.setData([x], [y])
+
+        # Remove any existing annotation
+        if hasattr(self, 'persistentAnnotation') and self.persistentAnnotation is not None:
+            self.plotWidget.plotItem.removeItem(self.persistentAnnotation)
+
+        # Create the annotation text
+        annotation_text = f"Frequency: {x_value:.2f} Hz\nMagnitude: {y_value:.2f} Bits"
+        
+        # Create a pyqtgraph TextItem for the annotation
+        self.persistentAnnotation = pg.TextItem(text=annotation_text, color='w', anchor=(0, 1))  # White text, anchor top-left
+
+        # Position the annotation close to the clicked point with an offset for visibility
+        self.persistentAnnotation.setPos(x, y)
+        self.plotWidget.plotItem.addItem(self.persistentAnnotation)
 
     @pyqtSlot(np.ndarray, np.ndarray)
     def update_fft_plot(self, frequencies, fft_data):
@@ -209,6 +278,8 @@ class myWindow(QMainWindow):
         if self.dtConfig["TimeDomainScopeEnabled"]:
             # Setup Scope for real-time plotting
             self.scope = Scope(self.SoundCapturer)
+            if self.dtConfig["TimeDomainScopeSettings"]["persistOnTop"]:
+                self.scope.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
             self.scope.show()
         else:
             print("-> Time domain scope disabled in [swi_config.json]")
@@ -219,9 +290,11 @@ class myWindow(QMainWindow):
             self.fftScope.show()
 
             self.ui.btnResetFFTMaxHold.setEnabled(True)
-  
         else:
             print("-> Frequency domain scope disabled in [swi_config.json]")
+
+        if self.dtConfig["ControlWindowSettings"]["persistOnTop"]:
+            self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
 
         self.SoundCapturer.start()
 
@@ -241,6 +314,9 @@ class myWindow(QMainWindow):
             self.SoundCapturer.blRun = True
             self.ui.btnPauseContinue.setText("Pause")
 
+    def closeEvent(self, event):
+        for window in QApplication.topLevelWidgets():
+            window.close()
 
 
 

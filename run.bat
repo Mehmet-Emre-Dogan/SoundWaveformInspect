@@ -1,2 +1,2 @@
-python main.py ".\swi_config.json"
-pause
+start pythonw main.py ".\swi_config.json"
+
