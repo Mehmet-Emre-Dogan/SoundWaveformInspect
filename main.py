@@ -79,12 +79,12 @@ class SoundCapturer(QThread):
                         ) as stream:
 
                 while True:
-                    if self.blRun:
-                        data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
-                        arrayData = np.frombuffer(data, dtype=np.int16)
-                        self.leftArrayData = arrayData[0::2]
-                        self.rightArrayData = arrayData[1::2]
+                    data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
+                    arrayData = np.frombuffer(data, dtype=np.int16)
+                    self.leftArrayData = arrayData[0::2]
+                    self.rightArrayData = arrayData[1::2]
 
+                    if self.blRun:
                         if self.dtConfig["TimeDomainScopeEnabled"]:
                             # Emit signal for time domain plot
                             self.sigBlockCaptured.emit(True)
@@ -92,8 +92,6 @@ class SoundCapturer(QThread):
                         if self.dtConfig["FrequencyDomainScopeEnabled"]:
                             # Calculate FFT and emit signal
                             self.perform_fft(self.leftArrayData)  # Send left channel data for FFT
-                    else:
-                        time.sleep(self.dtConfig["InputBlockTimeInSeconds"])
 
     def perform_fft(self, data):
         N = len(data)
