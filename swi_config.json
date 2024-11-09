@@ -7,7 +7,7 @@
 
     "AmbientNoiseForMicInDB"        :  0.05,
 
-    "InputBlockTimeInSeconds"       :  60e-3,
+    "InputBlockTimeInSeconds"       :  50e-3,
 
     "FrequencyDomainScopeSettings"  :
         {
@@ -17,7 +17,7 @@
 
     "TimeDomainScopeSettings"       :
         {
-            "yMinLimit"             : -2e3,
-            "yMaxLimit"             : 2e3
+            "yMinLimit"             : -5e3,
+            "yMaxLimit"             : 5e3
         }
 }

@@ -10,6 +10,7 @@ import pyqtgraph as pg
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
+import time
 
 if os.name == 'nt':  # Only if we are running on Windows
     from ctypes import windll
@@ -26,6 +27,8 @@ class SoundCapturer(QThread):
 
         self.leftArrayData  = []
         self.rightArrayData = []
+
+        self.blRun          = True
 
         with pyaudio.PyAudio() as p:
             try:
@@ -76,18 +79,21 @@ class SoundCapturer(QThread):
                         ) as stream:
 
                 while True:
-                    data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
-                    arrayData = np.frombuffer(data, dtype=np.int16)
-                    self.leftArrayData = arrayData[0::2]
-                    self.rightArrayData = arrayData[1::2]
+                    if self.blRun:
+                        data = stream.read(self.iInputFramesPerBlock, exception_on_overflow=False)
+                        arrayData = np.frombuffer(data, dtype=np.int16)
+                        self.leftArrayData = arrayData[0::2]
+                        self.rightArrayData = arrayData[1::2]
 
-                    if self.dtConfig["TimeDomainScopeEnabled"]:
-                        # Emit signal for time domain plot
-                        self.sigBlockCaptured.emit(True)
+                        if self.dtConfig["TimeDomainScopeEnabled"]:
+                            # Emit signal for time domain plot
+                            self.sigBlockCaptured.emit(True)
 
-                    if self.dtConfig["FrequencyDomainScopeEnabled"]:
-                        # Calculate FFT and emit signal
-                        self.perform_fft(self.leftArrayData)  # Send left channel data for FFT
+                        if self.dtConfig["FrequencyDomainScopeEnabled"]:
+                            # Calculate FFT and emit signal
+                            self.perform_fft(self.leftArrayData)  # Send left channel data for FFT
+                    else:
+                        time.sleep(self.dtConfig["InputBlockTimeInSeconds"])
 
     def perform_fft(self, data):
         N = len(data)
@@ -195,8 +201,6 @@ class myWindow(QMainWindow):
 
         self.ui.btnResetFFTMaxHold.clicked.connect(self.clear_max_hold)
 
-        self.runPauseState = "run"
-
         self.sConfigPath = p_sConfigDictPath
         self.dtConfig = LoadConfig(self.sConfigPath)
 
@@ -221,19 +225,22 @@ class myWindow(QMainWindow):
 
         self.SoundCapturer.start()
 
+        self.ui.btnPauseContinue.clicked.connect(self.HandleBtnPauseContinue)
+
     def clear_max_hold(self):
         # Reset the max peak hold in the FFTScope
         if self.fftScope:
             self.fftScope.maxPeaks = np.zeros_like(self.fftScope.maxPeaks)  # Reset the max peaks array
             self.fftScope.maxPeakCurve.setData([], [])  # Clear the max peak curve
-    # TODO
-    # def HandleBtnPauseContinue(self):
-    #     if(self.runPauseState == "run"):
-    #         self.ui.btnPauseContinue.setText("Pause")
-    #     elif(self.runPauseState == "paused"):
-    #         self.ui.btnPauseContinue.setText("Continue")
-    #     else:
-    #         self.ui.btnPauseContinue.setText("State Error")
+
+    def HandleBtnPauseContinue(self):
+        if(self.SoundCapturer.blRun):
+            self.SoundCapturer.blRun = False
+            self.ui.btnPauseContinue.setText("Continue")
+        else:
+            self.SoundCapturer.blRun = True
+            self.ui.btnPauseContinue.setText("Pause")
+
 
 
 
