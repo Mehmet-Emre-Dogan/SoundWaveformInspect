@@ -7,7 +7,7 @@
 
     "AmbientNoiseForMicInDB"        :  0.05,
 
-    "InputBlockTimeInSeconds"       :  50e-3,
+    "InputBlockTimeInSeconds"       :  36.363636e-3,
 
     "FrequencyDomainScopeSettings"  :
         {

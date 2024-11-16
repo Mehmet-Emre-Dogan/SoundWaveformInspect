@@ -123,8 +123,8 @@ class FFTScope(QMainWindow):
         self.plotWidget.showGrid(x=True, y=True)  # Enable grid
 
         self.plotWidget.addLegend() # Add legend
-        self.fftCurve = self.plotWidget.plot(pen='b', name="Current FFT Data")
-        self.maxPeakCurve = self.plotWidget.plot(pen='orange', name="Max Peak FFT Data", style='--')  # Orange dashed line for max peaks
+        self.fftCurve = self.plotWidget.plot(pen='cyan', name="Current FFT Data")
+        self.maxPeakCurve = self.plotWidget.plot(pen='yellow', name="Max Peak FFT Data")  # Orange dashed line for max peaks
 
         self.plotWidget.setLogMode(x=True, y=False)  # Log scale on X-axis (frequency)
         self.plotWidget.setYRange(self.dtConfig["FrequencyDomainScopeSettings"]["yMinLimit"], self.dtConfig["FrequencyDomainScopeSettings"]["yMaxLimit"])
@@ -174,6 +174,10 @@ class FFTScope(QMainWindow):
 
     def mark_point(self, event):
         """Mark the clicked point and display a persistent tooltip."""
+        # Check if the left mouse button was clicked
+        if event.button() != QtCore.Qt.LeftButton:
+            return  # Ignore if it was not a left click
+        
         # Map the clicked position to plot coordinates
         pos = event.scenePos()
         mouse_point = self.plotWidget.plotItem.vb.mapSceneToView(pos)
