@@ -12,7 +12,8 @@
     "FrequencyDomainScopeSettings"  :
         {
             "yMinLimit"             : -100,
-            "yMaxLimit"             : 1e3
+            "yMaxLimit"             : 1e3,
+            "persistOnTop"          : true
         },
 
     "TimeDomainScopeSettings"       :

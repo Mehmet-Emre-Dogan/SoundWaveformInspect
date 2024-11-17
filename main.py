@@ -289,6 +289,8 @@ class myWindow(QMainWindow):
         if self.dtConfig["FrequencyDomainScopeEnabled"]:
             # Setup FFTScope for real-time FFT plotting
             self.fftScope = FFTScope(self.SoundCapturer)
+            if self.dtConfig["FrequencyDomainScopeSettings"]["persistOnTop"]:
+                self.fftScope.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
             self.fftScope.show()
 
             self.ui.btnResetFFTMaxHold.setEnabled(True)
