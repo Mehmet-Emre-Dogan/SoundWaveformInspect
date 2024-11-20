@@ -89,7 +89,7 @@ class SoundCapturer(QThread):
                             # Emit signal for time domain plot
                             self.sigBlockCaptured.emit(True)
 
-                        if self.dtConfig["FrequencyDomainScopeEnabled"]:
+                        if self.dtConfig["FrequencyDomainScopeEnabled"] or self.dtConfig["FFTSpectrumVisualizerEnabled"]:
                             # Calculate FFT and emit signal
                             self.perform_fft(self.leftArrayData)  # Send left channel data for FFT
 
@@ -262,6 +262,77 @@ class Scope(QMainWindow):
         self.leftChannelCurve.setData(self.timeAxis, self.soundCapturer.leftArrayData)
         self.rightChannelCurve.setData(self.timeAxis, self.soundCapturer.rightArrayData)
 
+class FFTBarVisualizer(QMainWindow):
+    def __init__(self, soundCapturer):
+        super(FFTBarVisualizer, self).__init__()
+
+        self.soundCapturer = soundCapturer
+        self.dtConfig = self.soundCapturer.dtConfig
+
+        self.setWindowTitle("FFT Music Visualizer")
+        self.setWindowIcon(QtGui.QIcon('freq.png'))
+
+        self.fDecayFactor = self.dtConfig["FFTSpectrumVisualizerSettings"]["decayCoeff"]
+
+        # Set up pyqtgraph FFT plot
+        self.plotWidget = pg.PlotWidget(title="Real-time FFT Bar Graph")
+        self.setCentralWidget(self.plotWidget)
+
+        # Bar graph for FFT visualization
+        self.barGraph = pg.BarGraphItem(x=[], height=[], width=1.0, brush='LightSeaGreen')
+        self.plotWidget.addItem(self.barGraph)
+
+        # Scatter plot for max peaks
+        self.maxPeakDots = pg.ScatterPlotItem(size=10, brush='olivedrab')
+        self.plotWidget.addItem(self.maxPeakDots)
+
+        self.plotWidget.showGrid(x=True, y=True)
+        self.plotWidget.setLogMode(x=False, y=False)
+        self.plotWidget.setYRange(
+            self.dtConfig["FFTSpectrumVisualizerSettings"]["yMaxLimit"],
+            self.dtConfig["FFTSpectrumVisualizerSettings"]["yMinLimit"],
+        )
+        self.plotWidget.setLabel('bottom', 'Frequency', units='Hz')
+        self.plotWidget.setLabel('left', 'Magnitude [Bits]')
+
+        # Initialize max peaks array
+        self.maxPeaks = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
+
+        # Connect signal for real-time FFT plotting
+        self.soundCapturer.sigFFTDataReady.connect(self.update_bar_graph)
+
+    @pyqtSlot(np.ndarray, np.ndarray)
+    def update_bar_graph(self, frequencies, fft_data):
+        # Update max peaks for reference (optional)
+        self.maxPeaks = np.maximum(self.maxPeaks, fft_data)
+
+        # TODO: fix log mode not working problem
+        # transformFunction = lambda x: np.log10(x) if self.plotWidget.getAxis('bottom').logMode else x
+        # xData = transformFunction(frequencies)
+
+        # Update the bar graph
+        self.barGraph.setOpts(x=frequencies, height=fft_data, width=(frequencies[1] - frequencies[0]))
+        self.maxPeakDots.setData(frequencies, self.maxPeaks)
+
+        self.maxPeaks *= self.fDecayFactor
+        # # Update max peaks for reference (optional)
+        # self.maxPeaks = np.maximum(self.maxPeaks, fft_data)
+
+        # # Reduce data to fit into fewer bars (if needed)
+        # num_bars = 50  # Adjust number of bars
+        # bar_frequencies = np.interp(
+        #     np.linspace(0, len(frequencies), num_bars),
+        #     np.arange(len(frequencies)),
+        #     frequencies
+        # )
+        # bar_heights = np.interp(
+        #     np.linspace(0, len(fft_data), num_bars),
+        #     np.arange(len(fft_data)),
+        #     fft_data
+        # )
+
+        # # Update the bar graph
+        # self.barGraph.setOpts(x=bar_frequencies, height=bar_heights, width=(frequencies[1] - frequencies[0])*len(frequencies)/num_bars)
 
 class myWindow(QMainWindow):
     def __init__(self, p_sConfigDictPath):
@@ -296,6 +367,15 @@ class myWindow(QMainWindow):
             self.ui.btnResetFFTMaxHold.setEnabled(True)
         else:
             print("-> Frequency domain scope disabled in [swi_config.json]")
+
+        if self.dtConfig["FFTSpectrumVisualizerEnabled"]:
+            self.fftBarVisualizer = FFTBarVisualizer(self.SoundCapturer)
+            if self.dtConfig["FFTSpectrumVisualizerSettings"]["persistOnTop"]:
+                self.fftBarVisualizer.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
+            self.fftBarVisualizer.show()
+        else:
+            print("-> FFT music visualizer disabled in [swi_config.json]")
+
 
         if self.dtConfig["ControlWindowSettings"]["persistOnTop"]:
             self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)

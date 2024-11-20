@@ -1,19 +1,19 @@
 {
-    "FrequencyDomainScopeEnabled"   :  true,
+    "FrequencyDomainScopeEnabled"   :  false,
 
     "TimeDomainScopeEnabled"        :  true,
 
-    "FFTSpectrumVisualizerEnabled"  :  false,
+    "FFTSpectrumVisualizerEnabled"  :  true,
 
     "UseSpeakerOrMic"               :  "Speaker",
 
-    "InputBlockTimeInSeconds"       :  36.3636e-3,
+    "InputBlockTimeInSeconds"       :  16.1616e-3,
 
     "FrequencyDomainScopeSettings"  :
         {
             "yMinLimit"             : -100,
             "yMaxLimit"             : 1e3,
-            "persistOnTop"          : true
+            "persistOnTop"          : false
         },
 
     "TimeDomainScopeSettings"       :
@@ -26,7 +26,7 @@
     "ControlWindowSettings"         :
         {
 
-            "persistOnTop"          : true
+            "persistOnTop"          : false
         },
 
     "FFTSpectrumVisualizerSettings"  :
