@@ -9,7 +9,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QMainWindow, QApplication
-from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot, Qt
 import time
 
 if os.name == 'nt':  # Only if we are running on Windows
@@ -113,10 +113,13 @@ class FFTScope(QMainWindow):
 
         self.setWindowTitle("Frequency Domain")
         self.setWindowIcon(QtGui.QIcon('freq.png'))
+        self.setCursor(Qt.CrossCursor)
 
         # Set up pyqtgraph FFT plot
         self.plotWidget = pg.PlotWidget(title="Real-time FFT Scope")
         self.setCentralWidget(self.plotWidget)
+
+        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode) # set mouse mode 1 button (select to zoom)
 
         self.fftCurve = self.plotWidget.plot(pen='b')
         self.maxPeakCurve = self.plotWidget.plot(pen='orange', style='--')  # Orange dashed line for max peaks
@@ -233,6 +236,9 @@ class Scope(QMainWindow):
         # Setup pyqtgraph plot
         self.plotWidget = pg.PlotWidget(title="Real-time Audio Waveform")
         self.setCentralWidget(self.plotWidget)
+
+        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode) # set mouse mode 1 button (select to zoom)
+
         self.plotWidget.setYRange(self.dtConfig["TimeDomainScopeSettings"]["yMinLimit"], self.dtConfig["TimeDomainScopeSettings"]["yMaxLimit"])  # Set Y range for int16 audio data
         self.leftChannelCurve = self.plotWidget.plot(pen='r')  # Left channel in red
         self.rightChannelCurve = self.plotWidget.plot(pen='g')  # Right channel in green
@@ -271,12 +277,15 @@ class FFTBarVisualizer(QMainWindow):
 
         self.setWindowTitle("FFT Music Visualizer")
         self.setWindowIcon(QtGui.QIcon('freq.png'))
+        self.setCursor(Qt.CrossCursor)
 
         self.fDecayFactor = self.dtConfig["FFTSpectrumVisualizerSettings"]["decayCoeff"]
 
         # Set up pyqtgraph FFT plot
         self.plotWidget = pg.PlotWidget(title="Real-time FFT Bar Graph")
         self.setCentralWidget(self.plotWidget)
+
+        self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode) # set mouse mode 1 button (select to zoom)
 
         # Bar graph for FFT visualization
         self.barGraph = pg.BarGraphItem(x=[], height=[], width=1.0, brush='LightSeaGreen')
@@ -285,6 +294,10 @@ class FFTBarVisualizer(QMainWindow):
         # Scatter plot for max peaks
         self.maxPeakDots = pg.ScatterPlotItem(size=10, brush='olivedrab')
         self.plotWidget.addItem(self.maxPeakDots)
+
+        # Add scatter plot for marking clicked points
+        self.markerPlot = pg.ScatterPlotItem(size=10, pen='w')  # Red markers with white outline
+        self.plotWidget.addItem(self.markerPlot)
 
         self.plotWidget.showGrid(x=True, y=True)
         self.plotWidget.setLogMode(x=False, y=False)
@@ -298,8 +311,77 @@ class FFTBarVisualizer(QMainWindow):
         # Initialize max peaks array
         self.maxPeaks = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
 
+        # Enable mouse tracking for tooltip
+        self.plotWidget.setMouseTracking(True)
+        self.plotWidget.scene().sigMouseMoved.connect(self.show_tooltip)
+        self.plotWidget.scene().sigMouseClicked.connect(self.mark_point)
+        # Initialize a variable to store the persistent tooltip label
+        self.persistentAnnotation = None
+
         # Connect signal for real-time FFT plotting
         self.soundCapturer.sigFFTDataReady.connect(self.update_bar_graph)
+
+    def show_tooltip(self, pos):
+        # Map the mouse position to plot coordinates
+        mouse_point = self.plotWidget.plotItem.vb.mapSceneToView(pos)
+        x = mouse_point.x()
+        y = mouse_point.y()
+
+        # Check if the plot is in log scale for x or y
+        blXIsLog = self.plotWidget.getAxis('bottom').logMode
+        blYIsLog = self.plotWidget.getAxis('left').logMode
+
+        xValue = 10 ** x if blXIsLog else x
+        yValue = 10 ** y if blYIsLog else y
+
+        # Retrieve x and y axis bounds
+        x_min, x_max = self.plotWidget.plotItem.vb.viewRange()[0]
+        y_min, y_max = self.plotWidget.plotItem.vb.viewRange()[1]
+
+        # Ensure coordinates are within range
+        if x_min <= x <= x_max and y_min <= y <= y_max:
+            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), f"Frequency: {xValue:.2f} Hz\nMagnitude: {yValue:.2f} Bits")
+        else:
+            # Hide tooltip if mouse is out of plot range
+            QtWidgets.QToolTip.hideText()
+
+    def mark_point(self, event):
+        """Mark the clicked point and display a persistent tooltip."""
+        # Check if the left mouse button was clicked
+        if event.button() != QtCore.Qt.LeftButton:
+            return  # Ignore if it was not a left click
+        
+        # Map the clicked position to plot coordinates
+        pos = event.scenePos()
+        mouse_point = self.plotWidget.plotItem.vb.mapSceneToView(pos)
+        x, y = mouse_point.x(), mouse_point.y()
+
+        # Retrieve plot bounds
+        x_min, x_max = self.plotWidget.plotItem.vb.viewRange()[0]
+        y_min, y_max = self.plotWidget.plotItem.vb.viewRange()[1]
+
+        # Ensure click is within bounds
+        if x_min <= x <= x_max and y_min <= y <= y_max:
+            # Adjust for log scale if applicable
+            x_value = 10 ** x if self.plotWidget.getAxis('bottom').logMode else x
+            y_value = 10 ** y if self.plotWidget.getAxis('left').logMode else y
+
+            # Set the marker on the clicked point
+            self.markerPlot.setData([x], [y])
+
+        # Remove any existing annotation
+        if hasattr(self, 'persistentAnnotation') and self.persistentAnnotation is not None:
+            self.plotWidget.plotItem.removeItem(self.persistentAnnotation)
+
+        # Create the annotation text
+        annotation_text = f"Frequency: {x_value:.2f} Hz\nMagnitude: {y_value:.2f} Bits"
+        
+        # Create a pyqtgraph TextItem for the annotation
+        self.persistentAnnotation = pg.TextItem(text=annotation_text, color='w', anchor=(0, 1))  # White text, anchor top-left
+
+        # Position the annotation close to the clicked point with an offset for visibility
+        self.persistentAnnotation.setPos(x, y)
+        self.plotWidget.plotItem.addItem(self.persistentAnnotation)
 
     @pyqtSlot(np.ndarray, np.ndarray)
     def update_bar_graph(self, frequencies, fft_data):
