@@ -121,13 +121,13 @@ class FFTScope(QMainWindow):
 
         self.plotWidget.getViewBox().setMouseMode(pg.ViewBox.RectMode) # set mouse mode 1 button (select to zoom)
 
-        self.fftCurve = self.plotWidget.plot(pen='b')
-        self.maxPeakCurve = self.plotWidget.plot(pen='orange', style='--')  # Orange dashed line for max peaks
         self.plotWidget.showGrid(x=True, y=True)  # Enable grid
 
         self.plotWidget.addLegend() # Add legend
-        self.fftCurve = self.plotWidget.plot(pen='cyan', name="Current FFT Data")
         self.maxPeakCurve = self.plotWidget.plot(pen='yellow', name="Max Peak FFT Data")  # Orange dashed line for max peaks
+        self.averagesCurve = self.plotWidget.plot(pen='orange', name=f"Avg. FFT Data with Prescaler {self.dtConfig["FrequencyDomainScopeSettings"]["averagePrescaler"]}")
+        self.fftCurve = self.plotWidget.plot(pen='cyan', name="Current FFT Data") # plot current data to the topmost
+
 
         self.plotWidget.setLogMode(x=True, y=False)  # Log scale on X-axis (frequency)
         self.plotWidget.setYRange(self.dtConfig["FrequencyDomainScopeSettings"]["yMinLimit"], self.dtConfig["FrequencyDomainScopeSettings"]["yMaxLimit"])
@@ -136,6 +136,12 @@ class FFTScope(QMainWindow):
 
         # Initialize a max peaks array with very low values to start with
         self.maxPeaks = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
+
+        # Initialize average sums array with very low values to start with
+        self.averageSums                              = np.zeros(self.soundCapturer.iInputFramesPerBlock // 2)
+        self.averagePrescalerCounterLimit             = self.dtConfig["FrequencyDomainScopeSettings"]["averagePrescaler"]
+        self.averagePrescalerCounterLimitReciprocal   = (1.0 / self.averagePrescalerCounterLimit)
+        self.averagePrescalerCounter                  = 0
 
         # Add scatter plot for marking clicked points
         self.markerPlot = pg.ScatterPlotItem(size=10, pen='w')  # Red markers with white outline
@@ -222,6 +228,18 @@ class FFTScope(QMainWindow):
         self.fftCurve.setData(frequencies, fft_data)
         # Update max peak plot with held peak values
         self.maxPeakCurve.setData(frequencies, self.maxPeaks)
+
+        self.averagePrescalerCounter += 1
+        self.averageSums += fft_data
+        if self.averagePrescalerCounter >= self.averagePrescalerCounterLimit:
+            self.averageSums *= self.averagePrescalerCounterLimitReciprocal
+
+            self.averagesCurve.setData(frequencies, self.averageSums)
+
+            self.averageSums = np.zeros(len(self.averageSums)) 
+            self.averagePrescalerCounter = 0
+
+
 
 class Scope(QMainWindow):
     def __init__(self, soundCapturer):

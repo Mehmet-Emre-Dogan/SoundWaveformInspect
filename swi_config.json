@@ -3,7 +3,7 @@
 
     "TimeDomainScopeEnabled"        :  true,
 
-    "FFTSpectrumVisualizerEnabled"  :  false,
+    "FFTSpectrumVisualizerEnabled"  :  true,
 
     "UseSpeakerOrMic"               :  "Speaker",
 
@@ -13,7 +13,8 @@
         {
             "yMinLimit"             : -100,
             "yMaxLimit"             : 1e3,
-            "persistOnTop"          : true
+            "persistOnTop"          : true,
+            "averagePrescaler"      : 4
         },
 
     "TimeDomainScopeSettings"       :
